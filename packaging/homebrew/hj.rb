@@ -3,10 +3,8 @@ class Hj < Formula
 
   desc "HodlJuice in your terminal: Bitcoin podcasts to search, play and travel through"
   homepage "https://github.com/nmorton13/hodljuice-cli"
-  # PLACEHOLDER: no release is tagged yet. When you tag vX.Y.Z, set the version in
-  # the URL and the sha256 of that tarball (see packaging/homebrew/README.md).
   url "https://github.com/nmorton13/hodljuice-cli/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "085238b857622009c91fd572a3fb0ebd0e1ab3d3ff4cb8e0b49fb8930beea43f"
   license "MIT"
 
   depends_on "cryptography"

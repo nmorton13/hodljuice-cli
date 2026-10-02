@@ -20,7 +20,7 @@ and `rpds-py` instead of compiling them, vendors every other Python dependency a
    url=https://github.com/nmorton13/hodljuice-cli/archive/refs/tags/v0.1.0.tar.gz
    curl -sL "$url" | shasum -a 256
    ```
-   Put the URL in `url` and the hash in `sha256` (the formula ships with a placeholder of zeros).
+   Put the URL in `url` and the hash in `sha256`.
 4. If dependencies changed, regenerate the `resource` blocks (needs the formula in a tap; see below):
    ```sh
    brew update-python-resources nmorton13/hodljuice/hj
