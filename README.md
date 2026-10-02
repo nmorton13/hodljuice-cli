@@ -8,6 +8,8 @@ The Weekly Brew. It also ships a **Claude Code mod**: a status-line entry, a `/h
 Everything comes from HodlJuice's public, read-only MCP server (`https://hodljuice.app/mcp`). There's no
 account or API key.
 
+![Asking Claude Code for a Lyn Alden episode, with the HodlJuice panel playing it](docs/images/claude-code-panel.png)
+
 ## Install
 
 ### macOS: Homebrew
@@ -167,15 +169,10 @@ It exits after 10 idle minutes. Its socket lives in `~/Library/Caches/hodljuice/
 ## The Claude Code mod
 
 A now-playing entry on the hint line under Claude Code's prompt, and a `/hj-panel` with the controls and your saved
-episodes, playing through the same player:
+episodes, playing through the same player. In a wide window the panel sits beside the conversation (see the
+screenshot at the top); in a narrower one it opens as a compact player above the prompt:
 
-```
-📻 Noded Bitcoin Podcast · Noded 0.3.0 with Saifedean Ammous  01:13 / 1:01:18 ━━╸──
-p: pause n: next b: back s: save o: open x: stop
-
-Saved
-1: ▶ Bitcoin Tonight - 040 Pleb UnderGround
-```
+![The compact HodlJuice player in a narrower Claude Code window, playing a 2017 radio station](docs/images/compact-player.png)
 
 ### Install it
 
@@ -210,6 +207,10 @@ Restart Claude Code afterwards. To remove it: `hj mod uninstall`, or `/plugin un
 - **Ask Claude:** "play me something about Taproot" works. Claude searches with the HodlJuice tools and
   plays the episode with the mod's `hodljuice_play` tool.
 - **Morning toast:** the first time you start Claude Code on a day with a new Daily Pint (Monday to Saturday), a toast says so.
+
+| `/hj halving 2024` | `/pint` |
+|---|---|
+| ![Search results, each with a play button](docs/images/search.png) | ![The Daily Pint with its summary and recap link](docs/images/daily-pint.png) |
 
 ### Options
 
