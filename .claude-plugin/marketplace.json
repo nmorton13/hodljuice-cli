@@ -1,0 +1,12 @@
+{
+  "name": "hodljuice",
+  "owner": { "name": "Nathan Morton" },
+  "metadata": { "description": "HodlJuice for Claude Code." },
+  "plugins": [
+    {
+      "name": "hodljuice",
+      "source": "./claude-mod",
+      "description": "A status-line entry, /hj-panel, /pint, /brew, /hj-radio and /hj inside Claude Code, played through the hj CLI."
+    }
+  ]
+}

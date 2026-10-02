@@ -1,0 +1,25 @@
+{
+  "name": "hodljuice",
+  "version": "0.1.0",
+  "description": "HodlJuice in Claude Code: a status-line entry, /hj-panel, /pint, /brew, /hj-radio and /hj, played through the hj CLI.",
+  "author": { "name": "Nathan Morton" },
+  "homepage": "https://github.com/nmorton13/hodljuice-cli",
+  "types": "./types/index.d.ts",
+  "mcpServers": {
+    "hodljuice": { "type": "http", "url": "https://hodljuice.app/mcp" }
+  },
+  "userConfig": {
+    "pauseOnAsk": {
+      "type": "boolean",
+      "title": "Pause when Claude needs you",
+      "description": "Pause playback while a permission prompt waits for you, and resume after.",
+      "default": true
+    },
+    "hjPath": {
+      "type": "string",
+      "title": "hj command",
+      "description": "The hj executable, if it isn't on PATH.",
+      "default": "hj"
+    }
+  }
+}

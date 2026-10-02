@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hodljuice-cli"
+version = "0.1.0"
+description = "HodlJuice in your terminal: search, play, radio and time travel through Bitcoin podcasts."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Nathan Morton" }]
+dependencies = [
+    "mcp==2.2.0",
+    "typer>=0.12",
+    "rich>=13",
+]
+
+[project.scripts]
+hj = "hodljuice_cli.entry:main"
+
+[project.urls]
+Homepage = "https://github.com/nmorton13/hodljuice-cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hodljuice_cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: talks to the real HodlJuice server (opt in with HJ_LIVE=1)"]
