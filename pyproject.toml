@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hodljuice-cli"
-version = "0.1.0"
+version = "0.1.1"
 description = "HodlJuice in your terminal: search, play, radio and time travel through Bitcoin podcasts."
 readme = "README.md"
 license = "MIT"

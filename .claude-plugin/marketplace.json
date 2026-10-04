@@ -6,7 +6,7 @@
     {
       "name": "hodljuice",
       "source": "./claude-mod",
-      "description": "A status-line entry, /hj-panel, /pint, /brew, /hj-radio and /hj inside Claude Code, played through the hj CLI."
+      "description": "A /hj-panel player, /pint, /brew, /hj-radio and /hj inside Claude Code, played through the hj CLI."
     }
   ]
 }
