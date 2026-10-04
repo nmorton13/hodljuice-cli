@@ -1,7 +1,7 @@
 {
   "name": "hodljuice",
   "version": "0.1.0",
-  "description": "HodlJuice in Claude Code: a status-line entry, /hj-panel, /pint, /brew, /hj-radio and /hj, played through the hj CLI.",
+  "description": "HodlJuice in Claude Code: a /hj-panel player, /pint, /brew, /hj-radio and /hj, played through the hj CLI.",
   "author": { "name": "Nathan Morton" },
   "homepage": "https://github.com/nmorton13/hodljuice-cli",
   "types": "./types/index.d.ts",

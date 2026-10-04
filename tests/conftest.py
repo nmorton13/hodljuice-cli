@@ -89,6 +89,7 @@ class FakeMpv:
         self.commands: list[list] = []
         self.paused = False
         self.position = 0.0
+        self.speed = 1.0
         self.writers = []
         self.server = None
 
@@ -109,6 +110,8 @@ class FakeMpv:
                 self.paused = not self.paused
             elif cmd[0] == "set_property" and cmd[1] == "pause":
                 self.paused = cmd[2]
+            elif cmd[0] == "set_property" and cmd[1] == "speed":
+                self.speed = cmd[2]
             elif cmd[0] == "seek":
                 self.position = max(0.0, self.position + cmd[1]) if cmd[2] == "relative" else float(cmd[1])
             elif cmd[0] == "get_property":

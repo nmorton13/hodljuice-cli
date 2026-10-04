@@ -25,6 +25,7 @@ IDLE_STATUS = {
     "position": None,
     "duration": None,
     "radio": None,
+    "speed": None,
 }
 
 # Commands that start playerd when it isn't running.
@@ -123,6 +124,8 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("prev", help="previous in queue")
     seek = sub.add_parser("seek", help="seek ±SECONDS")
     seek.add_argument("seconds", type=float)
+    speed = sub.add_parser("speed", help="set the playback speed (0.5 to 3)")
+    speed.add_argument("speed", type=float)
     sub.add_parser("stop", help="stop and clear the queue")
     sub.add_parser("save", help="save the current episode")
     sub.add_parser("open", help="open the current episode in your browser")
@@ -195,6 +198,8 @@ def main(argv: list[str]) -> int:
         timeout = 30.0  # playerd may need to look the id up first
     elif cmd == "seek":
         req["seconds"] = args.seconds
+    elif cmd == "speed":
+        req["speed"] = args.speed
     elif cmd == "radio":
         req["filters"] = radio_filters(args.year, args.show, args.topic, args.days)
         timeout = 30.0

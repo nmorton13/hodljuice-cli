@@ -7,6 +7,7 @@ export type PlayerStatus = {
   position: number | null
   duration: number | null
   radio: Record<string, string | number> | null
+  speed: number | null
 }
 
 export type SavedEpisode = { id: string; title: string; podcast: string; published: string }
@@ -18,6 +19,7 @@ declare module 'claude-code' {
       hjMissing: boolean
       pausedForAsk: boolean
       saved: SavedEpisode[]
+      startedHere: boolean
     }
   }
 }

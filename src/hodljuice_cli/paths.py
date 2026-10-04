@@ -55,3 +55,7 @@ def config_dir() -> Path:
 
 def saved_file() -> Path:
     return config_dir() / "saved.json"
+
+
+def settings_file() -> Path:
+    return config_dir() / "player.json"

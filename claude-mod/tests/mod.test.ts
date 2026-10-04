@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
-import type { On, RenderElement } from 'claude-code'
+import type { On } from 'claude-code'
 
-import { panelState, parseRadioArgs, parseResultsText, parseSaved, parseSearchArgs, parseStatus, resultsText, statusLine } from '../hooks/lib'
+import { fmtTime, panelState, parseRadioArgs, parseResultsText, parseSaved, parseSearchArgs, parseStatus, resultsText } from '../hooks/lib'
 
 const PLAYING = {
   state: 'playing',
@@ -12,6 +12,7 @@ const PLAYING = {
   position: 723,
   duration: 2710,
   radio: null,
+  speed: 1,
 }
 
 const IDLE = { state: 'idle', title: null, podcast: null, published: null, play_url: null, position: null, duration: null, radio: null }
@@ -23,7 +24,7 @@ const SAVED = [{ id: 'WHMoleIi_O8', title: 'Bitcoin Tonight - 040', podcast: 'Pl
 /** Stands in for the engine and the hj CLI; records every hj argv the mod runs. */
 function world(on: On, player: Record<string, unknown>[]) {
   const runs: string[][] = []
-  mock.clock(on, { now: Date.parse('2026-09-27T12:00:00Z') }) // a Sunday: no morning toast
+  mock.clock(on, { now: Date.parse('2026-09-27T12:00:00Z') })
   mock.store(on)
   on('process.run', ($, e) => {
     runs.push([...e.argv])
@@ -31,6 +32,8 @@ function world(on: On, player: Record<string, unknown>[]) {
     if (e.argv[2] === 'pause') player[0] = { ...st, state: st.state === 'playing' ? 'paused' : 'playing' }
     if (e.argv[2] === 'next') player[0] = { ...st, title: 'The next one' }
     if (e.argv[2] === 'radio') player[0] = { ...PLAYING, title: 'A radio pick' }
+    if (e.argv[2] === 'stop') player[0] = { ...IDLE }
+    if (e.argv[2] === 'speed') player[0] = { ...st, speed: Number(e.argv[3]) }
     const out = e.argv[2] === 'status' ? JSON.stringify(player[0]) : e.argv[1] === 'saved' ? JSON.stringify(SAVED) : ''
     return { value: { exitCode: 0, stdout: out, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
@@ -61,7 +64,9 @@ describe('panel', () => {
       expect(await ui.find({ type: 'Text', text: /^Noded 0\.3\.0 with Saifedean/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /12:03/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /45:10/ })).toBeDefined()
-      for (const key of ['pause', 'next', 'prev', 'save', 'open', 'stop', 'play-WHMoleIi_O8']) expect(await ui.find({ key })).toBeDefined()
+      for (const key of ['back', 'pause', 'skip', 'speed', 'next', 'stop', 'prev', 'save', 'open', 'refresh', 'play-WHMoleIi_O8']) {
+        expect(await ui.find({ key })).toBeDefined()
+      }
       await ui.unmount()
     }
   })
@@ -76,6 +81,22 @@ describe('panel', () => {
     await ui.press({ key: 'play-WHMoleIi_O8' })
     expect(runs.some(argv => argv.join(' ') === 'hj ctl pause')).toBe(true)
     expect(runs.some(argv => argv.join(' ') === 'hj ctl play WHMoleIi_O8')).toBe(true)
+    await ui.unmount()
+  })
+
+  test('seek and speed', async ($, on) => {
+    const runs = world(on, [{ ...PLAYING }])
+    await start($)
+    await run($, 'hj-panel')
+    const ui = await $.ui.mount({ plugin: 'hodljuice', surface: 'terminal', component: 'Pane', requestId: 'hj-panel', props: PANE_PROPS as any })
+    expect((await ui.find({ key: 'speed' }))?.text).toBe('1×')
+    await ui.press({ key: 'back' })
+    await ui.press({ key: 'skip' })
+    await ui.press({ key: 'speed' })
+    expect(runs.some(argv => argv.join(' ') === 'hj ctl seek -15')).toBe(true)
+    expect(runs.some(argv => argv.join(' ') === 'hj ctl seek 30')).toBe(true)
+    expect(runs.some(argv => argv.join(' ') === 'hj ctl speed 1.25')).toBe(true)
+    expect((await ui.find({ key: 'speed' }))?.text).toBe('1.25×')
     await ui.unmount()
   })
 
@@ -125,24 +146,7 @@ describe('opening and closing the panel', () => {
   })
 })
 
-describe('hint line and quick commands', () => {
-  test('the hint line follows the player and clears when idle', async ($, on) => {
-    const player: Record<string, unknown>[] = [{ ...PLAYING }]
-    world(on, player)
-    on('ui.render', { component: 'PromptHint' }, ($, e) => {
-      const { Text } = $.ui.resolve(e)
-      return h(Text, {}, `${e.props.hint}${e.props.tail ?? ''}`) as RenderElement
-    })
-    await start($)
-    const props = { isDraft: false, isWorking: false, hint: '? for shortcuts' }
-    const ui = await $.ui.mount({ plugin: 'hodljuice', surface: 'terminal', component: 'PromptHint', props })
-    expect((await ui.find({ type: 'Text' }))?.text).toMatch(/^\? for shortcuts {2}▶ 12:03\/45:10 Noded 0\.3\.0.*$/)
-    player[0] = { ...IDLE }
-    await run($, 'hj-stop')
-    expect((await ui.find({ type: 'Text' }))?.text).toBe('? for shortcuts')
-    await ui.unmount()
-  })
-
+describe('quick commands', () => {
   test('/hj-next and /hj-pause run hj ctl and report', async ($, on) => {
     const runs = world(on, [{ ...PLAYING }])
     await start($)
@@ -160,11 +164,21 @@ describe('pause when Claude needs you', () => {
     on('tool.check', () => ({ decision: 'ask' as const }))
     on('turn.complete', () => ({ text: '' }))
     await start($)
+    await run($, 'hj-radio')
     await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'toolu_1' })
     expect(player[0]!.state).toBe('paused')
     await $.turn.complete({ reason: 'answer', turnId: 't1', answer: '', durationMs: 1000, isAborted: false })
     expect(player[0]!.state).toBe('playing')
     expect(runs.filter(argv => argv[2] === 'pause')).toHaveLength(2)
+  })
+
+  test('leaves playback it did not start alone', async ($, on) => {
+    const player = [{ ...PLAYING }]
+    const runs = world(on, player)
+    on('tool.check', () => ({ decision: 'ask' as const }))
+    await start($)
+    await $.tool.check({ tool: 'Bash', input: { command: 'ls' }, tool_use_id: 'toolu_5' })
+    expect(runs.filter(argv => argv[2] === 'pause')).toHaveLength(0)
   })
 
   test("leaves a paused player alone", async ($, on) => {
@@ -184,6 +198,7 @@ describe('pause when Claude needs you', () => {
     world(on, player)
     on('tool.check', () => ({ decision: 'ask' as const }))
     await start($)
+    await run($, 'hj-radio')
     await $.tool.check({ tool: 'Bash', input: { command: 'ls' }, tool_use_id: 'toolu_3' })
     expect(player[0]!.state).toBe('playing')
   })
@@ -195,6 +210,46 @@ describe('pause when Claude needs you', () => {
     await start($)
     await $.tool.check({ tool: 'Read', input: { file_path: 'a' }, tool_use_id: 'toolu_4' })
     expect(player[0]!.state).toBe('playing')
+  })
+})
+
+describe('quitting Claude', () => {
+  const end = ($: any, reason: string) => $.session.end({ reason, sessionId: 's1', resume: { id: 's1' } })
+
+  test('stops what this session started', async ($, on) => {
+    const runs = world(on, [{ ...IDLE }])
+    on('session.end', ($, e) => ({ sessionId: e.sessionId }))
+    await start($)
+    await run($, 'hj-radio')
+    await end($, 'prompt_input_exit')
+    expect(runs.some(argv => argv.join(' ') === 'hj ctl stop')).toBe(true)
+  })
+
+  test('keeps playing through a /clear', async ($, on) => {
+    const runs = world(on, [{ ...IDLE }])
+    on('session.end', ($, e) => ({ sessionId: e.sessionId }))
+    await start($)
+    await run($, 'hj-radio')
+    await end($, 'clear')
+    expect(runs.some(argv => argv[2] === 'stop')).toBe(false)
+  })
+
+  test('leaves playback it did not start alone', async ($, on) => {
+    const runs = world(on, [{ ...PLAYING, state: 'paused' }])
+    on('session.end', ($, e) => ({ sessionId: e.sessionId }))
+    await start($)
+    await end($, 'other')
+    expect(runs.some(argv => argv[2] === 'stop')).toBe(false)
+  })
+
+  test('a stopped player is let go', async ($, on) => {
+    const runs = world(on, [{ ...IDLE }])
+    on('session.end', ($, e) => ({ sessionId: e.sessionId }))
+    await start($)
+    await run($, 'hj-radio')
+    await run($, 'hj-stop')
+    await end($, 'prompt_input_exit')
+    expect(runs.filter(argv => argv[2] === 'stop')).toHaveLength(1)
   })
 })
 
@@ -212,10 +267,14 @@ describe('status parsing', () => {
     expect(parseStatus(JSON.stringify({ state: 'exploded' }))?.state).toBe('idle')
   })
 
-  test('status line and saved list', () => {
-    const st = parseStatus(JSON.stringify({ ...PLAYING, state: 'paused', radio: {} }))!
-    expect(statusLine(st)).toBe('⏸ 12:03/45:10 Noded 0.3.0 with Saifedean Ammous')
-    expect(statusLine(parseStatus(JSON.stringify(IDLE)))).toBeUndefined()
+  test('times read like sidecast', () => {
+    expect(fmtTime(10)).toBe('0:10')
+    expect(fmtTime(723)).toBe('12:03')
+    expect(fmtTime(7390)).toBe('2:03:10')
+    expect(fmtTime(null)).toBe('--:--')
+  })
+
+  test('saved list', () => {
     expect(parseSaved(JSON.stringify([...SAVED, { id: 'bad id', title: 'x' }])).map(h => h.id)).toEqual(['WHMoleIi_O8'])
     expect(parseSaved('nope')).toEqual([])
   })

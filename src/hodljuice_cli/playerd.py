@@ -24,7 +24,8 @@ from hodljuice_cli.sanitize import clean, safe_url
 
 IDLE_EXIT_SECONDS = 600
 MAX_REQUEST_BYTES = 64 * 1024
-COMMANDS = {"ping", "status", "play", "pause", "next", "prev", "seek", "stop", "save", "radio"}
+COMMANDS = {"ping", "status", "play", "pause", "next", "prev", "seek", "speed", "stop", "save", "radio"}
+MIN_SPEED, MAX_SPEED = 0.5, 3.0
 RADIO_KEYS = {"year", "show", "topic", "days"}
 _EPISODE_ID_CHARS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-")
 
@@ -197,6 +198,7 @@ class Player:
         self._errors_in_a_row = 0
         self._prefetch: asyncio.Task | None = None
         self._loading = False
+        self.speed = load_speed()
 
     # -- state
 
@@ -212,6 +214,7 @@ class Player:
             return {
                 "state": "idle", "title": None, "podcast": None, "published": None, "play_url": None,
                 "position": None, "duration": None, "radio": self.radio, "queue": len(self.queue),
+                "speed": self.speed,
             }
         paused = await self.mpv.get("pause")
         pos = await self.mpv.get("time-pos")
@@ -228,6 +231,7 @@ class Player:
             "duration": round(dur, 1) if isinstance(dur, (int, float)) else None,
             "radio": self.radio,
             "queue": len(self.queue) - self.index - 1,
+            "speed": self.speed,
         }
 
     # -- playback
@@ -245,6 +249,7 @@ class Player:
         self._loading = True
         try:
             await self.mpv.command("loadfile", url, "replace")
+            await self.mpv.command("set_property", "speed", self.speed)
             await self.mpv.command("set_property", "pause", False)
         finally:
             self._loading = False
@@ -422,6 +427,15 @@ class Player:
                 await asyncio.sleep(0.2)
         raise CommandError("Can't seek in this episode yet; try again in a moment.")
 
+    async def cmd_speed(self, req: dict) -> dict:
+        speed = req.get("speed")
+        if not isinstance(speed, (int, float)) or isinstance(speed, bool) or not MIN_SPEED <= speed <= MAX_SPEED:
+            raise CommandError(f"speed must be a number from {MIN_SPEED} to {MAX_SPEED}")
+        self.speed = round(float(speed), 2)
+        await self.mpv.command("set_property", "speed", self.speed)
+        save_speed(self.speed)
+        return {"message": f"Speed {self.speed:g}×"}
+
     async def cmd_stop(self, req: dict) -> dict:
         self.radio = None
         self.queue = []
@@ -490,6 +504,35 @@ def save_episode(item: dict) -> bool:
 
 
 # ---------------------------------------------------------------- server
+
+
+def load_speed() -> float:
+    """The speed set last time, kept in player.json; 1.0 when there is none."""
+    try:
+        speed = json.loads(paths.settings_file().read_text()).get("speed")
+    except (OSError, ValueError, AttributeError):
+        return 1.0
+    if isinstance(speed, (int, float)) and not isinstance(speed, bool) and MIN_SPEED <= speed <= MAX_SPEED:
+        return float(speed)
+    return 1.0
+
+
+def save_speed(speed: float) -> None:
+    f = paths.settings_file()
+    try:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            settings = json.loads(f.read_text())
+            if not isinstance(settings, dict):
+                settings = {}
+        except (OSError, ValueError):
+            settings = {}
+        settings["speed"] = speed
+        tmp = f.with_suffix(".tmp")
+        tmp.write_text(json.dumps(settings))
+        os.replace(tmp, f)
+    except OSError as e:
+        log(f"couldn't save the speed: {e}")
 
 
 def log(msg: str) -> None:

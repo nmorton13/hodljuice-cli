@@ -241,6 +241,31 @@ def test_save_appends_once(sockdir, home):
     assert [s["id"] for s in saved] == [episode(0)["id"]]
 
 
+def test_speed_is_set_kept_and_remembered(sockdir, home):
+    async def body(player, mpv):
+        assert (await player.handle({"cmd": "status"}))["speed"] == 1.0
+        await player.handle({"cmd": "play", "episodes": [episode(0)]})
+        assert (await player.handle({"cmd": "speed", "speed": 1.5}))["message"] == "Speed 1.5×"
+        assert mpv.speed == 1.5
+        assert (await player.handle({"cmd": "status"}))["speed"] == 1.5
+        # A new episode keeps the speed.
+        mpv.speed = 1.0
+        await player.handle({"cmd": "play", "episodes": [episode(1)]})
+        assert mpv.speed == 1.5
+        for bad in (0.1, 9, True, "2"):
+            with pytest.raises(CommandError):
+                await player.handle({"cmd": "speed", "speed": bad})
+
+    run(sockdir, FakeSource(), body)
+    # The next playerd starts at the same speed.
+    assert json.loads(paths.settings_file().read_text()) == {"speed": 1.5}
+
+    async def again(player, mpv):
+        assert player.speed == 1.5
+
+    run(sockdir, FakeSource(), again)
+
+
 def test_socket_protocol(sockdir):
     async def body(player, mpv):
         server = await asyncio.start_unix_server(lambda r, w: handle_client(player, r, w), path=str(sockdir / "p.sock"))

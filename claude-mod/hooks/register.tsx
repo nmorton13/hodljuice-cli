@@ -4,21 +4,20 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { PlayerStatus } from '../types'
 import {
   brewText,
-  chicagoToday,
   clean,
   episodeForModel,
   fmtTime,
   hitsFrom,
   mcpData,
+  nextSpeed,
   parseRadioArgs,
   parseSaved,
   parseResultsText,
   parseSearchArgs,
-  panelState,
   parseStatus,
   progressBar,
   resultsText,
-  statusLine,
+  stationLabel,
   trim,
 } from './lib'
 
@@ -26,6 +25,7 @@ const status = atom({ plugin: 'hodljuice', key: 'status' } as const, null)
 const hjMissing = atom({ plugin: 'hodljuice', key: 'hjMissing' } as const, false)
 const pausedForAsk = atom({ plugin: 'hodljuice', key: 'pausedForAsk' } as const, false)
 const saved = atom({ plugin: 'hodljuice', key: 'saved' } as const, [])
+const startedHere = atom({ plugin: 'hodljuice', key: 'startedHere' } as const, false)
 
 const SERVER = 'hodljuice'
 const PLAYING_POLL_MS = 1000
@@ -34,14 +34,16 @@ const INSTALL_HINT = 'Install the hj CLI to play episodes: https://github.com/nm
 const PLAY_TOOL = 'hodljuice_play'
 const PANEL = 'hj-panel'
 const SAVED_ROWS = 9
-// Bitcoin orange: reads on both light and dark themes.
-const ACCENT = '#F7931A'
+// Running these from this session makes what plays this session's; `stop` lets it go.
+const CLAIMS = new Set(['play', 'radio', 'pause', 'next', 'prev', 'seek', 'speed'])
 
 type Options = { pauseOnAsk?: boolean; hjPath?: string }
 
 // Set from the options each time the module loads.
 let hjCommand = 'hj'
 let pauseOnAsk = true
+// The startedHere atom survives a hot reload; this copy survives a /clear, which empties $.state.
+let startedHereCopy = false
 
 
 // ---------------------------------------------------------------- the hj CLI
@@ -51,7 +53,10 @@ async function ctl($: EngineInterface, args: string[], timeoutMs = 10_000) {
   try {
     const r = await $.process.run([hjCommand, 'ctl', ...args], { timeoutMs })
     if ((await read($, hjMissing)) === true) await update($, hjMissing, () => false)
-    return { ok: r.exitCode === 0, out: clean(r.stdout), err: clean(r.stderr) }
+    const ok = r.exitCode === 0
+    if (ok && CLAIMS.has(args[0]!)) await setStartedHere($, true)
+    if (ok && args[0] === 'stop') await setStartedHere($, false)
+    return { ok, out: clean(r.stdout), err: clean(r.stderr) }
   } catch (err) {
     const why = clean(String(err))
     // The command couldn't start: hj isn't installed (or isn't on PATH).
@@ -63,10 +68,25 @@ async function ctl($: EngineInterface, args: string[], timeoutMs = 10_000) {
   }
 }
 
+/**
+ * Whether this session started what's playing. Only then does the mod pause it for a permission
+ * prompt or stop it when Claude quits; playback from a terminal or another session is left alone.
+ */
+async function isStartedHere($: EngineInterface) {
+  return startedHereCopy || (await read($, startedHere))
+}
+
+async function setStartedHere($: EngineInterface, value: boolean) {
+  startedHereCopy = value
+  if ((await read($, startedHere)) !== value) await update($, startedHere, () => value)
+}
+
 async function refresh($: EngineInterface): Promise<PlayerStatus | null> {
   const r = await ctl($, ['status', '--json'], 3000)
   const st = r.ok ? parseStatus(r.out) : null
   await update($, status, () => st)
+  // Played out or stopped elsewhere: whatever plays next isn't ours until we start it.
+  if (!st || st.state === 'idle') await setStartedHere($, false)
   return st
 }
 
@@ -138,16 +158,6 @@ async function brew($: EngineInterface, tool: 'daily_pint' | 'weekly_brew', args
   return { text: brewText(r.data) + (played ? `\n\n${played}` : '') }
 }
 
-async function morningToast($: EngineInterface) {
-  const today = chicagoToday(await $.clock.now())
-  if (today.isSunday || (await $.store.get('toastedOn')) === today.date) return
-  const r = await callTool($, 'daily_pint', {})
-  const d = r.data as { date?: string; title?: string } | undefined
-  if (!d || d.date !== today.date) return
-  await $.store.set('toastedOn', today.date)
-  $.ui.toast(`New Daily Pint: ${trim(clean(d.title), 60)} · /pint`, { timeoutMs: 8000 })
-}
-
 async function resumeIfWePaused($: EngineInterface) {
   if (!(await read($, pausedForAsk))) return
   await update($, pausedForAsk, () => false)
@@ -204,7 +214,6 @@ export const register: Register = (on, options) => {
     })
     await refresh($)
     poll($)
-    void morningToast($)
     return started
   })
 
@@ -242,7 +251,9 @@ export const register: Register = (on, options) => {
       started = r.ok ? `📻 ${r.out}\n` : `${r.err}\n`
     }
     await $.ui.open({ id: PANEL, title: 'HodlJuice', focus: true, closeOnEscape: true })
-    return { text: `${started}HodlJuice panel open: p pause · n next · b back · s save · o open · x stop · 1–9 play saved · q or Esc close.` }
+    return {
+      text: `${started}HodlJuice panel open: b «15 · p pause · f 30» · x speed · n next · s stop · l prev · v save · o open · 1–9 play saved · q or Esc close.`,
+    }
   })
 
   on('command.run', { command: 'hj' }, async ($, e) => {
@@ -284,14 +295,6 @@ export const register: Register = (on, options) => {
     )
   })
 
-  // ---------------------------------------------------------------- the line under the prompt
-
-  // Added to the dim hint line rather than $.ui.status, which the terminal draws as a ⚠ notice.
-  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    const line = (await read($, hjMissing)) ? 'hj not installed' : statusLine(await read($, status))
-    return line ? next({ ...e, props: { ...e.props, tail: `  ${line}` } }) : next(e)
-  })
-
   // ---------------------------------------------------------------- the panel
 
   on('ui.render', { component: 'Pane', requestId: PANEL }, async ($, e) => {
@@ -310,65 +313,79 @@ export const register: Register = (on, options) => {
       else $.ui.toast(r.err || 'Couldn’t play that episode.')
     }
     const isIdle = !st || st.state === 'idle'
-    const close = <Button key="close" label="close" hotkey="q" plain role="dismiss" onPress={() => $.ui.close({ id: PANEL })} />
-    // The time sits either side of a bar that fills the row.
-    const times = isIdle ? null : { at: fmtTime(st.position), of: fmtTime(st.duration) }
-    const barWidth = times ? Math.max(5, columns - times.at.length - times.of.length - 2) : 0
+    const close = <Button key="close" label="close" hotkey="q" plain dimColor role="dismiss" onPress={() => $.ui.close({ id: PANEL })} />
     return (
       <Box flexDirection="column">
         {/* Header: the right edge stays clear for the pane's own close mark. */}
-        <Box flexDirection="row" paddingRight={3}>
-          <Text bold color={ACCENT}>
-            HodlJuice
+        <Box flexDirection="row" justifyContent="space-between" paddingRight={3}>
+          <Text wrap="truncate">
+            <Text bold>HodlJuice</Text>
+            {st?.radio ? <Text dimColor> · {stationLabel(st.radio)}</Text> : null}
           </Text>
-          <Text dimColor> · {panelState(st)}</Text>
+          <Button
+            key="refresh"
+            label="refresh"
+            plain
+            dimColor
+            onPress={async () => {
+              await refresh($)
+              await loadSaved($)
+            }}
+          />
         </Box>
-        <Text> </Text>
         {isIdle ? (
-          <Text dimColor wrap="wrap">
-            Nothing playing. Press r for radio, or try /pint or /hj &lt;search&gt;.
-          </Text>
-        ) : (
-          <Box flexDirection="column">
-            {st.podcast && (
-              <Text color={ACCENT} wrap="truncate">
-                {st.podcast}
-              </Text>
-            )}
-            <Text bold wrap="wrap">
-              {trim(st.title || 'Unknown episode', columns * 2)}
+          <Box flexDirection="column" marginY={1}>
+            <Text dimColor wrap="wrap">
+              Nothing playing. Press r for radio, or try /pint or /hj &lt;search&gt;.
             </Text>
-            <Box flexDirection="row">
-              <Text>{times!.at} </Text>
-              <Text color={ACCENT}>{progressBar(st.position, st.duration, barWidth)}</Text>
-              <Text dimColor> {times!.of}</Text>
+            <Box flexDirection="row" columnGap={2}>
+              <Button key="radio" label="radio" hotkey="r" plain onPress={press(['radio'])} />
+              {close}
+            </Box>
+          </Box>
+        ) : (
+          <Box flexDirection="column" marginY={1}>
+            <Box flexDirection="column" borderStyle="round" borderColor="claude" paddingX={1}>
+              <Text wrap="truncate">
+                <Text color="claude">{st.state === 'paused' ? '⏸' : '▶'} </Text>
+                <Text bold>{st.podcast || 'HodlJuice'}</Text>
+              </Text>
+              <Text wrap="truncate">{st.title || 'Unknown episode'}</Text>
+              {(() => {
+                // The border and padding take four columns.
+                const times = `${fmtTime(st.position)} / ${fmtTime(st.duration)}`
+                const bar = progressBar(st.position, st.duration, Math.max(10, columns - times.length - 6))
+                return (
+                  <Box flexDirection="row">
+                    <Text color="claude">{bar.done}</Text>
+                    <Text dimColor>{bar.rest}</Text>
+                    <Text dimColor>  {times}</Text>
+                  </Box>
+                )
+              })()}
+              {/* The same keys as sidecast's player, so a key means one thing in both. */}
+              <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+                <Button key="back" label="«15" hotkey="b" plain onPress={press(['seek', '-15'])} />
+                <Button key="pause" label={st.state === 'paused' ? 'play' : 'pause'} hotkey="p" plain onPress={press(['pause'])} />
+                <Button key="skip" label="30»" hotkey="f" plain onPress={press(['seek', '30'])} />
+                <Button key="speed" label={`${st.speed ?? 1}×`} hotkey="x" plain onPress={press(['speed', String(nextSpeed(st.speed))])} />
+                <Button key="next" label="next" hotkey="n" plain onPress={press(['next'])} />
+                <Button key="stop" label="stop" hotkey="s" plain onPress={press(['stop'])} />
+              </Box>
+            </Box>
+            <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+              <Button key="prev" label="prev" hotkey="l" plain dimColor onPress={press(['prev'])} />
+              <Button key="save" label="save" hotkey="v" plain dimColor onPress={press(['save'])} />
+              <Button key="open" label="open" hotkey="o" plain dimColor onPress={press(['open'])} />
+              {close}
             </Box>
           </Box>
         )}
-        <Text> </Text>
-        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-          {isIdle ? (
-            <Button key="radio" label="radio" hotkey="r" plain onPress={press(['radio'])} />
-          ) : (
-            [
-              <Button key="pause" label={st.state === 'paused' ? 'play' : 'pause'} hotkey="p" plain onPress={press(['pause'])} />,
-              <Button key="next" label="next" hotkey="n" plain onPress={press(['next'])} />,
-              <Button key="prev" label="back" hotkey="b" plain onPress={press(['prev'])} />,
-              <Button key="save" label="save" hotkey="s" plain onPress={press(['save'])} />,
-              <Button key="open" label="open" hotkey="o" plain onPress={press(['open'])} />,
-              <Button key="stop" label="stop" hotkey="x" plain onPress={press(['stop'])} />,
-            ]
-          )}
-          {close}
-        </Box>
-        <Text> </Text>
         <Box flexDirection="row" justifyContent="space-between">
-          <Text bold color={ACCENT}>
-            Saved
-          </Text>
+          <Text bold>Saved</Text>
           <Text dimColor>{list.length || ''}</Text>
         </Box>
-        {list.length === 0 && <Text dimColor>Nothing saved yet: press s while an episode plays.</Text>}
+        {list.length === 0 && <Text dimColor>Nothing saved yet: press v while an episode plays.</Text>}
         {list.map((hit, i) => (
           <Box key={`saved-${hit.id}`} flexDirection="row">
             <Button key={`play-${hit.id}`} label="▶" hotkey={String(i + 1)} plain onPress={playSaved(hit.id)} />
@@ -388,7 +405,7 @@ export const register: Register = (on, options) => {
 
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
-    if (pauseOnAsk && verdict.decision === 'ask' && e.tool_use_id !== undefined) {
+    if (pauseOnAsk && verdict.decision === 'ask' && e.tool_use_id !== undefined && (await isStartedHere($))) {
       const st = await read($, status)
       if (st?.state === 'playing' && !(await read($, pausedForAsk))) {
         const r = await ctl($, ['pause'])
@@ -406,6 +423,15 @@ export const register: Register = (on, options) => {
     const ran = await next(e)
     if (e.tool !== `mcp__hodljuice__${PLAY_TOOL}`) await resumeIfWePaused($)
     return ran
+  })
+
+  // ---------------------------------------------------------------- leaving
+
+  on('session.end', async ($, e, next) => {
+    // A /clear or a resume keeps the person here: keep playing. Any other end (exit, ctrl+c,
+    // closing the window) stops what this session started.
+    if (e.reason !== 'clear' && e.reason !== 'resume' && (await isStartedHere($))) await ctl($, ['stop'], 2000)
+    return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {

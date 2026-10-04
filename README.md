@@ -2,7 +2,7 @@
 
 `hj` searches, plays and time-travels through [HodlJuice](https://hodljuice.app), a Bitcoin-only podcast
 player with about 31,000 episodes from 120+ shows, plus its own daily and weekly shows, The Daily Pint and
-The Weekly Brew. It also ships a **Claude Code mod**: a status-line entry, a `/hj-panel`, `/pint`, `/brew`, `/hj-radio` and
+The Weekly Brew. It also ships a **Claude Code mod**: a `/hj-panel` player, `/pint`, `/brew`, `/hj-radio` and
 `/hj` inside Claude Code, using the same player.
 
 Everything comes from HodlJuice's public, read-only MCP server (`https://hodljuice.app/mcp`). There's no
@@ -159,8 +159,9 @@ hj ctl play VUfVU8-9IFM [--append]    # play now, or add to the queue
 hj ctl pause                          # toggle
 hj ctl next | prev | stop | save | open
 hj ctl seek -30                       # ±seconds
+hj ctl speed 1.5                      # 0.5 to 3, remembered for next time
 hj ctl radio --year 2019 --topic money
-hj ctl status --json                  # {state, title, podcast, published, play_url, position, duration, radio}
+hj ctl status --json                  # {state, title, podcast, published, play_url, position, duration, radio, speed}
 ```
 
 It exits after 10 idle minutes. Its socket lives in `~/Library/Caches/hodljuice/` (macOS) or
@@ -168,7 +169,7 @@ It exits after 10 idle minutes. Its socket lives in `~/Library/Caches/hodljuice/
 
 ## The Claude Code mod
 
-A now-playing entry on the hint line under Claude Code's prompt, and a `/hj-panel` with the controls and your saved
+A `/hj-panel` with the player, its controls and your saved
 episodes, playing through the same player. In a wide window the panel sits beside the conversation (see the
 screenshot at the top); in a narrower one it opens as a compact player above the prompt:
 
@@ -201,12 +202,15 @@ Restart Claude Code afterwards. To remove it: `hj mod uninstall`, or `/plugin un
 | `/hj-stop` | stop playback |
 
 - **Panel keys:** `/hj-panel` opens with the keys (click it, or ctrl+x then Tab, to come back to it):
-  `p` pause, `n` next, `b` back, `s` save, `o` open, `x` stop, `1`–`9` play a saved episode.
-- **Under the prompt:** `📻 Title 12:03/45:10` on the dim hint line while something plays (▶ for a single
-  episode, ⏸ when paused). `n` past the last episode turns the radio on.
+  `b` back 15 s, `p` pause, `f` forward 30 s, `x` speed (1 → 1.25 → 1.5 → 1.75 → 2), `n` next, `s` stop,
+  `l` previous episode, `v` save, `o` open, `1`–`9` play a saved episode. They match
+  [sidecast](https://github.com/nmorton13/sidecast)'s player.
+- **Radio:** `n` past the last episode turns the radio on.
+- **Quitting Claude Code stops it:** whatever you started in a session stops when you quit (`/exit`,
+  ctrl+c, closing the window), and the next session starts quiet. `/clear` keeps it playing. Playback
+  you started from a terminal with `hj` is left alone.
 - **Ask Claude:** "play me something about Taproot" works. Claude searches with the HodlJuice tools and
   plays the episode with the mod's `hodljuice_play` tool.
-- **Morning toast:** the first time you start Claude Code on a day with a new Daily Pint (Monday to Saturday), a toast says so.
 
 | `/hj halving 2024` | `/pint` |
 |---|---|
@@ -220,7 +224,7 @@ In `/config` (or `/plugin configure hodljuice@hodljuice`):
   and resumes when you've answered or the turn ends.
 - **hj command**: the path to `hj` if it isn't on PATH.
 
-Without `hj` installed, the hint line and panel say so, and `/hj`, `/pint` and
+Without `hj` installed, the panel says so, and `/hj`, `/pint` and
 `/brew` still show results.
 
 ## Safety

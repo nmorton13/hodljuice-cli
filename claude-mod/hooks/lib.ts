@@ -42,16 +42,23 @@ export function fmtTime(seconds: number | null | undefined): string {
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
   const pad = (n: number) => String(n).padStart(2, '0')
-  return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${pad(m)}:${pad(s % 60)}`
+  return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`
 }
 
-export function progressBar(position: number | null, duration: number | null, width = 5): string {
-  if (!duration || position === null) return '─'.repeat(width)
-  const filled = Math.max(0, Math.min(1, position / duration)) * width
-  const full = Math.floor(filled)
-  let bar = '━'.repeat(full)
-  if (full < width) bar += (filled - full >= 0.5 ? '╸' : '─') + '─'.repeat(width - full - 1)
-  return bar
+/** A bar of `width` cells: the played part with a playhead, then the rest (drawn dim). */
+export function progressBar(position: number | null, duration: number | null, width: number): { done: string; rest: string } {
+  if (width <= 0) return { done: '', rest: '' }
+  if (!duration || position === null) return { done: '', rest: '─'.repeat(width) }
+  const filled = Math.min(width - 1, Math.max(0, Math.round((position / duration) * (width - 1))))
+  return { done: '━'.repeat(filled) + '●', rest: '─'.repeat(width - 1 - filled) }
+}
+
+const SPEEDS = [1, 1.25, 1.5, 1.75, 2]
+
+/** The speed key steps 1 → 1.25 → 1.5 → 1.75 → 2 → 1; a speed off the steps goes back to 1. */
+export function nextSpeed(speed: number | null): number {
+  const i = SPEEDS.indexOf(speed ?? 1)
+  return i < 0 ? 1 : SPEEDS[(i + 1) % SPEEDS.length]!
 }
 
 /** `hj ctl status --json` output → a PlayerStatus, or null when it isn't one. */
@@ -85,25 +92,21 @@ export function parseStatus(stdout: string): PlayerStatus | null {
     position: num(d.position),
     duration: num(d.duration),
     radio,
+    speed: num(d.speed),
   }
 }
 
-/** The panel header's state: `Playing`, `Paused`, `Radio · 2018`, or `Idle`. */
+/** The panel header's state: `Playing`, `Paused`, `📻 Radio · 2018`, or `Idle`. */
 export function panelState(st: PlayerStatus | null): string {
   if (!st || st.state === 'idle') return 'Idle'
   if (st.state === 'paused') return 'Paused'
-  if (!st.radio) return 'Playing'
-  const filters = Object.values(st.radio).map(String).filter(Boolean)
-  return ['📻 Radio', ...filters].join(' · ')
+  return st.radio ? stationLabel(st.radio) : 'Playing'
 }
 
-/** One short status-line entry, or undefined to clear it. */
-export function statusLine(st: PlayerStatus | null): string | undefined {
-  if (!st || st.state === 'idle') return undefined
-  const icon = st.state === 'paused' ? '⏸' : st.radio ? '📻' : '▶'
-  const title = trim(st.title || 'Unknown episode', 40)
-  // Time first: the terminal cuts the hint line at the row end, so the title is what gets cut.
-  return `${icon} ${fmtTime(st.position)}/${fmtTime(st.duration)} ${title}`
+/** A station and its filters: `📻 Radio · 2018 · money`. */
+export function stationLabel(radio: NonNullable<PlayerStatus['radio']>): string {
+  const filters = Object.values(radio).map(String).filter(Boolean)
+  return ['📻 Radio', ...filters].join(' · ')
 }
 
 /** `hj saved --json` output → playable hits, newest save first. */
@@ -239,13 +242,4 @@ export function mcpData(r: { isError: boolean; content: { type: string; text?: s
   } catch {
     return { error: 'The HodlJuice server returned no data.' }
   }
-}
-
-/** Today in America/Chicago, YYYY-MM-DD, and whether it's Sunday. */
-export function chicagoToday(nowMs: number): { date: string; isSunday: boolean } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
-  }).formatToParts(new Date(nowMs))
-  const get = (t: string) => parts.find(p => p.type === t)?.value ?? ''
-  return { date: `${get('year')}-${get('month')}-${get('day')}`, isSunday: get('weekday') === 'Sun' }
 }
