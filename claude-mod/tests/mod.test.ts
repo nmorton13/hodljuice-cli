@@ -22,12 +22,17 @@ const PANE_PROPS = { title: 'HodlJuice', isFocused: true, bodyColumns: 80, place
 const SAVED = [{ id: 'WHMoleIi_O8', title: 'Bitcoin Tonight - 040', podcast: 'Pleb UnderGround', published: '2026-09-16', play_url: 'https://hodljuice.app/e/WHMoleIi_O8' }]
 
 /** Stands in for the engine and the hj CLI; records every hj argv the mod runs. */
-function world(on: On, player: Record<string, unknown>[]) {
+type Opened = { id: string; focus?: boolean }
+
+function world(on: On, player: Record<string, unknown>[], opts: { opened?: Opened[]; failRadio?: boolean } = {}) {
   const runs: string[][] = []
   mock.clock(on, { now: Date.parse('2026-09-27T12:00:00Z') })
   mock.store(on)
   on('process.run', ($, e) => {
     runs.push([...e.argv])
+    if (opts.failRadio && e.argv[2] === 'radio') {
+      return { value: { exitCode: 1, stdout: '', stderr: 'hj ctl: out of episodes', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     const st = player[0]!
     if (e.argv[2] === 'pause') player[0] = { ...st, state: st.state === 'playing' ? 'paused' : 'playing' }
     if (e.argv[2] === 'next') player[0] = { ...st, title: 'The next one' }
@@ -40,7 +45,10 @@ function world(on: On, player: Record<string, unknown>[]) {
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('tool.register', ($, e) => ({ value: { tool: `mcp__hodljuice__${e.name}` } }))
   on('ui.toast', () => ({ value: undefined }))
-  on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  on('ui.open', ($, e) => {
+    opts.opened?.push({ id: e.id, focus: e.focus })
+    return { value: { isPlaced: true as const } }
+  })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   return runs
 }
@@ -210,6 +218,40 @@ describe('pause when Claude needs you', () => {
     await start($)
     await $.tool.check({ tool: 'Read', input: { file_path: 'a' }, tool_use_id: 'toolu_4' })
     expect(player[0]!.state).toBe('playing')
+  })
+})
+
+describe('starting playback opens the panel', () => {
+  test('/hj-radio opens it without the keyboard', async ($, on) => {
+    const opened: Opened[] = []
+    world(on, [{ ...IDLE }], { opened })
+    await start($)
+    await run($, 'hj-radio')
+    expect(opened).toEqual([{ id: 'hj-panel', focus: undefined }])
+  })
+
+  test('so does Claude playing an episode', async ($, on) => {
+    const opened: Opened[] = []
+    world(on, [{ ...IDLE }], { opened })
+    await start($)
+    await $.tool.call({ tool: 'mcp__hodljuice__hodljuice_play', episode_id: 'VUfVU8-9IFM' } as any)
+    expect(opened.map(o => o.id)).toEqual(['hj-panel'])
+  })
+
+  test('/hj-panel takes the keyboard', async ($, on) => {
+    const opened: Opened[] = []
+    world(on, [{ ...PLAYING }], { opened })
+    await start($)
+    await run($, 'hj-panel')
+    expect(opened).toEqual([{ id: 'hj-panel', focus: true }])
+  })
+
+  test('a failed start opens nothing', async ($, on) => {
+    const opened: Opened[] = []
+    world(on, [{ ...IDLE }], { opened, failRadio: true })
+    await start($)
+    expect((await run($, 'hj-radio')).text).toBe('hj ctl: out of episodes')
+    expect(opened).toEqual([])
   })
 })
 

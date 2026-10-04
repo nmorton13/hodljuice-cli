@@ -112,6 +112,15 @@ async function control($: EngineInterface, args: string[]) {
   return r.out || (st?.title ? `Playing: ${st.title}` : 'Done.')
 }
 
+/**
+ * Opens the panel: the one place that shows what plays. Playback started from a command, a ▶ or
+ * Claude opens it without the keyboard, so the person can keep typing; `/hj-panel` asks for it.
+ */
+async function showPanel($: EngineInterface, focus = false) {
+  await loadSaved($)
+  await $.ui.open({ id: PANEL, title: 'HodlJuice', closeOnEscape: true, ...(focus ? { focus: true as const } : {}) })
+}
+
 /** Polls once a second while something plays, every 10 s otherwise. */
 function poll($: EngineInterface) {
   $.clock.after(PLAYING_POLL_MS, async () => {
@@ -142,8 +151,10 @@ async function playUrl($: EngineInterface, data: unknown): Promise<string> {
   const target = typeof d.id === 'string' && d.id ? d.id : typeof d.play_url === 'string' ? d.play_url : ''
   if (!target) return ''
   const r = await ctl($, ['play', target], 30_000)
-  if (r.ok) await refresh($)
-  return r.ok ? r.out : r.err
+  if (!r.ok) return r.err
+  await refresh($)
+  await showPanel($)
+  return r.out
 }
 
 async function brew($: EngineInterface, tool: 'daily_pint' | 'weekly_brew', args: string) {
@@ -226,8 +237,10 @@ export const register: Register = (on, options) => {
     const parsed = parseRadioArgs(e.args)
     if ('error' in parsed) return { text: parsed.error }
     const r = await ctl($, ['radio', ...parsed.argv], 30_000)
-    if (r.ok) await refresh($)
-    return { text: r.ok ? `📻 ${r.out}` : r.err }
+    if (!r.ok) return { text: r.err }
+    await refresh($)
+    await showPanel($)
+    return { text: `📻 ${r.out}` }
   })
 
   on('command.run', { command: 'hj-stop' }, async $ => {
@@ -241,7 +254,6 @@ export const register: Register = (on, options) => {
   }
 
   on('command.run', { command: 'hj-panel' }, async $ => {
-    await loadSaved($)
     // Opening the panel with nothing playing starts the radio rather than showing an empty player.
     const st = await refresh($)
     let started = ''
@@ -250,7 +262,7 @@ export const register: Register = (on, options) => {
       if (r.ok) await refresh($)
       started = r.ok ? `📻 ${r.out}\n` : `${r.err}\n`
     }
-    await $.ui.open({ id: PANEL, title: 'HodlJuice', focus: true, closeOnEscape: true })
+    await showPanel($, true)
     return {
       text: `${started}HodlJuice panel open: b «15 · p pause · f 30» · x speed · n next · s stop · l prev · v save · o open · 1–9 play saved · q or Esc close.`,
     }
@@ -281,8 +293,9 @@ export const register: Register = (on, options) => {
               plain
               onPress={async () => {
                 const r = await ctl($, ['play', hit.id], 30_000)
-                if (r.ok) await refresh($)
-                else $.ui.toast(r.err || 'Couldn’t play that episode.')
+                if (!r.ok) return $.ui.toast(r.err || 'Couldn’t play that episode.')
+                await refresh($)
+                await showPanel($)
               }}
             />
             <Text> {trim(hit.title, Math.max(20, width - 46))} </Text>
@@ -450,6 +463,7 @@ export const register: Register = (on, options) => {
     const r = await ctl($, ['play', id], 30_000)
     if (!r.ok) return { result: `Couldn't play it: ${r.err}` }
     const st = await refresh($)
+    await showPanel($)
     return { result: episodeForModel({ ...st, id }) }
   })
 }

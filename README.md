@@ -205,6 +205,9 @@ Restart Claude Code afterwards. To remove it: `hj mod uninstall`, or `/plugin un
   `b` back 15 s, `p` pause, `f` forward 30 s, `x` speed (1 → 1.25 → 1.5 → 1.75 → 2), `n` next, `s` stop,
   `l` previous episode, `v` save, `o` open, `1`–`9` play a saved episode. They match
   [sidecast](https://github.com/nmorton13/sidecast)'s player.
+- **The panel opens by itself:** starting something with `/hj-radio`, `/pint`, `/brew`, a ▶ in `/hj`
+  results, or by asking Claude opens the panel without taking the keyboard, so you can keep typing.
+  `/hj-panel` opens it with the keys.
 - **Radio:** `n` past the last episode turns the radio on.
 - **Quitting Claude Code stops it:** whatever you started in a session stops when you quit (`/exit`,
   ctrl+c, closing the window), and the next session starts quiet. `/clear` keeps it playing. Playback
