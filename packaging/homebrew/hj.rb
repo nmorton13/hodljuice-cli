@@ -3,8 +3,8 @@ class Hj < Formula
 
   desc "HodlJuice in your terminal: Bitcoin podcasts to search, play and travel through"
   homepage "https://github.com/nmorton13/hodljuice-cli"
-  url "https://github.com/nmorton13/hodljuice-cli/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "085238b857622009c91fd572a3fb0ebd0e1ab3d3ff4cb8e0b49fb8930beea43f"
+  url "https://github.com/nmorton13/hodljuice-cli/archive/refs/tags/v0.1.1.tar.gz"
+  sha256 "32b054c987e61d3fe134ca907bb54d56ff853284192ca9a5ac89510b59f8ce1c"
   license "MIT"
 
   depends_on "cryptography"
